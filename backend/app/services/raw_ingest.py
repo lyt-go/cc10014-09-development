@@ -123,7 +123,7 @@ class RawIngestService:
         ods = OdsLayerService()
         existing = store.find_by_field("ods_layer", "表名称", tbl_name)
         if existing is None:
-            ods.create_entry({
+            existing, _ = ods.create_entry({
                 "表编号": f"ODS_{batch_no.replace('RAW-', '').replace('-', '_')}",
                 "来源系统": source,
                 "表名称": tbl_name,
@@ -139,23 +139,39 @@ class RawIngestService:
             existing["创建批次"] = batch_no
             existing["字段列表"] = tgt_fields
             store.save_version("ods_layer", existing["id"], existing)
-        # 自动注册schema
+        # 按来源归属裁剪入库批次字段结构，生成ODS可见字段结构（只暴露归属字段）
+        from app.services.ods_visible_schema import OdsVisibleSchemaService
+        from app.services.source_attribution import split_fields
+        ovs = OdsVisibleSchemaService()
+        tgt_list = split_fields(tgt_fields)
+        structure = None
+        if existing is not None:
+            structure, _ = ovs.generate_for_table(existing, system=True, batch_fields=tgt_list)
+        visible_set = set(split_fields(structure.get("可见字段清单"))) if structure else set(tgt_list)
+        dtype_list = split_fields(dtypes)
+        kept = [(f, dtype_list[i] if i < len(dtype_list) else "STRING")
+                for i, f in enumerate(tgt_list) if f in visible_set]
+        visible_text = ",".join(f for f, _ in kept)
+        visible_dtypes = ",".join(d for _, d in kept)
+        # 自动注册schema：只注册裁剪后的可见字段，越权字段不写入结构
         from app.services.schema_registry import SchemaRegistryService
         sch = SchemaRegistryService()
+        next_version = f"v{len(sch.get_schema_for_table(tbl_name)) + 1}"
         sch.create_entry({
             "定义编号": f"SCH-{batch_no.replace('RAW-', '')}",
             "表名称": tbl_name,
-            "字段名称": tgt_fields,
-            "字段类型": dtypes,
-            "可空标识": "N,N,N",
-            "默认值": ",,",
-            "定义版本": "v1",
+            "字段名称": visible_text,
+            "字段类型": visible_dtypes,
+            "可空标识": ",".join("N" for _ in kept),
+            "默认值": ",".join("" for _ in kept),
+            "定义版本": next_version,
             "生效批次": batch_no,
         })
-        # 写入模拟表数据
+        # 写入模拟表数据（按可见字段落地，下游查询读不到越权字段）
         row_count = int(entry.get("原始行数", "0") or "0")
         if row_count > 0:
+            visible_fields = [f for f, _ in kept]
             sample_rows = []
             for i in range(min(row_count, 10)):  # 最多模拟10条
-                sample_rows.append({"_id": i + 1, "batch": batch_no, "source": source})
+                sample_rows.append({field: f"{field}_{i + 1}" for field in visible_fields})
             store.set_table_rows(tbl_name, sample_rows)

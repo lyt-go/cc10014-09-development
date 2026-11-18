@@ -3,6 +3,26 @@ from __future__ import annotations
 
 from typing import Any
 
+# 模拟分层存储里的真实行数据：键为表名称，值为行记录。
+# 只在服务首次启动时加载，测试重置仓库后会清空，不影响用例。
+SEED_TABLE_DATA: dict[str, list[dict[str, Any]]] = {
+    "ods_orders": [
+        {"order_id": "O0001", "order_amount": "120.50", "order_status": "已完成", "dt": "2026-11-01"},
+        {"order_id": "O0002", "order_amount": "86.00", "order_status": "待支付", "dt": "2026-11-01"},
+        {"order_id": "O0003", "order_amount": "230.75", "order_status": "已完成", "dt": "2026-11-02"},
+    ],
+    "ods_payments": [
+        {"pay_id": "P0001", "pay_amount": "120.50", "pay_time": "2026-11-01 10:00:00", "dt": "2026-11-02"},
+        {"pay_id": "P0002", "pay_amount": "45.00", "pay_time": "2026-11-02 11:30:00", "dt": "2026-11-02"},
+        {"pay_id": "P0003", "pay_amount": "99.99", "pay_time": "2026-11-02 15:20:00", "dt": "2026-11-03"},
+    ],
+    "ods_users": [
+        {"user_id": "U0001", "register_time": "2026-10-01 08:00:00", "user_level": "VIP", "dt": "2026-11-03"},
+        {"user_id": "U0002", "register_time": "2026-10-02 09:10:00", "user_level": "普通", "dt": "2026-11-03"},
+        {"user_id": "U0003", "register_time": "2026-10-03 12:40:00", "user_level": "SVIP", "dt": "2026-11-03"},
+    ],
+}
+
 SEED_ROWS: dict[str, list[dict[str, Any]]] = {
     "raw_ingest": [
         {"id": 1, "status": "已入库", "pending": False, "abnormal": False,
@@ -42,9 +62,52 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
          "分区字段": "dt", "存储格式": "PARQUET", "保留天数": "90", "压缩算法": "SNAPPY",
          "创建批次": "RAW-20261102", "字段列表": "pay_id,pay_amount,pay_time,dt"},
         {"id": 3, "status": "已上线", "pending": False, "abnormal": False,
-         "表编号": "ODS_USR_001", "来源系统": "用户系统", "表名称": "ods_users",
+         "表编号": "ODS_USR_001", "来源系统": "用户系统V2", "表名称": "ods_users",
          "分区字段": "dt", "存储格式": "PARQUET", "保留天数": "90", "压缩算法": "SNAPPY",
          "创建批次": "RAW-20261103", "字段列表": "user_id,register_time,user_level,dt"},
+    ],
+    "source_attribution": [
+        {"id": 1, "status": "已登记", "pending": False, "abnormal": False,
+         "归属编号": "ATTR-ORD-001", "来源系统": "订单系统",
+         "归属字段清单": "order_id,order_amount,order_status,dt", "权限级别": "可写",
+         "生效日期": "2026-11-01"},
+        {"id": 2, "status": "已登记", "pending": False, "abnormal": False,
+         "归属编号": "ATTR-PAY-001", "来源系统": "支付系统",
+         "归属字段清单": "pay_id,pay_amount,pay_time,dt", "权限级别": "受控",
+         "生效日期": "2026-11-02"},
+        {"id": 3, "status": "已登记", "pending": False, "abnormal": False,
+         "归属编号": "ATTR-USR-001", "来源系统": "用户系统",
+         "归属字段清单": "user_id,register_time,user_level,dt", "权限级别": "共享",
+         "生效日期": "2026-11-03"},
+        {"id": 4, "status": "已登记", "pending": False, "abnormal": False,
+         "归属编号": "ATTR-USR2-001", "来源系统": "用户系统V2",
+         "归属字段清单": "user_id,register_time,dt", "权限级别": "可写",
+         "生效日期": "2026-11-10"},
+    ],
+    "ods_visible_schema": [
+        {"id": 1, "status": "已生效", "pending": False, "abnormal": False,
+         "结构编号": "VIS-ODS-ORD-001", "表名称": "ods_orders", "来源系统": "订单系统",
+         "批次字段清单": "order_id,order_amount,order_status,dt",
+         "归属字段清单": "order_id,order_amount,order_status,dt",
+         "可见字段清单": "order_id,order_amount,order_status,dt", "越权字段清单": "",
+         "边界模式": "严格", "冲突标记": "否", "迁移提示": "", "来源切换清单": "",
+         "处理顺序": ""},
+        {"id": 2, "status": "已生效", "pending": False, "abnormal": False,
+         "结构编号": "VIS-ODS-PAY-001", "表名称": "ods_payments", "来源系统": "支付系统",
+         "批次字段清单": "pay_id,pay_amount,pay_time,dt",
+         "归属字段清单": "pay_id,pay_amount,pay_time,dt",
+         "可见字段清单": "pay_id,pay_amount,pay_time,dt", "越权字段清单": "",
+         "边界模式": "严格", "冲突标记": "否", "迁移提示": "", "来源切换清单": "",
+         "处理顺序": ""},
+        {"id": 3, "status": "已生效", "pending": False, "abnormal": False,
+         "结构编号": "VIS-ODS-USR-001", "表名称": "ods_users", "来源系统": "用户系统V2",
+         "批次字段清单": "user_id,register_time,user_level,dt",
+         "归属字段清单": "user_id,register_time,dt",
+         "可见字段清单": "user_id,register_time,dt", "越权字段清单": "user_level",
+         "边界模式": "严格", "冲突标记": "是",
+         "迁移提示": "来源系统由「用户系统」变更为「用户系统V2」：按当前归属裁剪，越权字段 user_level 已移除，历史批次字段需迁移",
+         "来源切换清单": "用户系统→用户系统V2",
+         "处理顺序": "1"},
     ],
     "cleanse_rule": [
         {"id": 1, "status": "已生效", "pending": False, "abnormal": False,

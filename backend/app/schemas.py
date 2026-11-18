@@ -35,6 +35,19 @@ class ActionPayload(BaseModel):
     remark: str | None = None
 
 
+class VisibleGeneratePayload(BaseModel):
+    """生成/重裁剪ODS可见字段结构：边界模式决定冲突时按哪一侧归属裁剪。"""
+
+    boundary: str = "严格"
+
+
+class VisibleSwitchPayload(BaseModel):
+    """切换来源归属：目标来源系统 + 冲突时使用的边界模式。"""
+
+    source: str
+    boundary: str = "严格"
+
+
 
 class RawIngestEntry(BaseModel):
     """入库批次明细结构。"""

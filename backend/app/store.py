@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from app.seed import SEED_ROWS
+from app.seed import SEED_ROWS, SEED_TABLE_DATA
 
 
 class Store:
@@ -16,7 +16,9 @@ class Store:
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
         # 模拟真实表数据（分层存储的实际行数据）
-        self._table_data: dict[str, list[dict[str, Any]]] = {}
+        self._table_data: dict[str, list[dict[str, Any]]] = {
+            name: [dict(row) for row in rows] for name, rows in SEED_TABLE_DATA.items()
+        }
         # 版本历史: "module:id" -> [{version, timestamp, data}, ...]
         self._versions: dict[str, list[dict[str, Any]]] = {}
         # 血缘边记录

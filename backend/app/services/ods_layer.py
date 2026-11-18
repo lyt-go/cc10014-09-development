@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.ods_visible_schema import OdsVisibleSchemaService
+from app.services.source_attribution import split_fields
 from app.store import store
 
 MODULE = "ods_layer"
@@ -11,6 +13,8 @@ REQUIRED_FIELDS = ["表编号", "来源系统", "表名称"]
 STATUS_ORDER = ["草稿", "待校验", "已上线", "已下线"]
 ACTION_RULES = {"提交校验": "待校验", "确认上线": "已上线", "标记下线": "已下线"}
 NEGATIVE_ACTIONS = []
+
+visible_service = OdsVisibleSchemaService()
 
 
 class OdsLayerService:
@@ -32,7 +36,19 @@ class OdsLayerService:
             rows = [row for row in rows if row.get("status") == status]
         total = len(rows)
         start = (page - 1) * size
-        return rows[start:start + size], total
+        return [self._with_visible_info(row) for row in rows[start:start + size]], total
+
+    def _with_visible_info(self, row: dict[str, Any]) -> dict[str, Any]:
+        """列表行附带ODS可见字段结构状态与越权字段数，不改动仓库里的原始行。"""
+        structure = visible_service.get_by_table(str(row.get("表名称", "")))
+        enriched = dict(row)
+        if structure is None:
+            enriched["可见结构状态"] = "未生成"
+            enriched["越权字段数"] = 0
+        else:
+            enriched["可见结构状态"] = str(structure.get("status", ""))
+            enriched["越权字段数"] = len(split_fields(structure.get("越权字段清单")))
+        return enriched
 
     def get_entry(self, entry_id: int) -> dict[str, Any] | None:
         return store.find(MODULE, entry_id)
@@ -64,6 +80,11 @@ class OdsLayerService:
         target = ACTION_RULES[action]
         if target not in STATUS_ORDER:
             return None, f"目标状态「{target}」不在允许的状态序列里"
+        if action == "确认上线":
+            # 来源归属和贴源表上线必须一起校验：越权字段未裁剪不能上线
+            ok, message = visible_service.validate_online(entry)
+            if not ok:
+                return None, message
         entry["status"] = target
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
@@ -72,6 +93,10 @@ class OdsLayerService:
 
     def get_table_data(self, table_name: str) -> list[dict[str, Any]]:
         return store.table_rows(table_name)
+
+    def get_visible_table_data(self, table_name: str) -> list[dict[str, Any]]:
+        """下游查询视角的表数据：按ODS可见字段结构投影，越权字段不出现。"""
+        return visible_service.project_rows(table_name, store.table_rows(table_name))
 
     def get_batches_for_table(self, table_name: str) -> list[dict[str, Any]]:
         ods = self.get_by_table_name(table_name)

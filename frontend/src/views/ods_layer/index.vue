@@ -30,14 +30,22 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th v-for="column in displayColumns" :key="column">{{ column }}</th>
           <th>可执行动作</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)" :data-testid="`row-${row.id}`" :data-status="String(row.status)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in displayColumns" :key="column">{{ row[column] ?? '—' }}</td>
           <td class="row-actions">
+            <button
+              class="link"
+              type="button"
+              :data-testid="`detail-${row.id}`"
+              @click="openDetail(row)"
+            >
+              详情
+            </button>
             <button
               v-for="action in actions"
               :key="action"
@@ -51,7 +59,7 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 1" class="empty-state">暂无贴源层管理数据，可先登记贴源表</td>
+          <td :colspan="displayColumns.length + 1" class="empty-state">暂无贴源层管理数据，可先登记贴源表</td>
         </tr>
       </tbody>
     </table>
@@ -72,34 +80,12 @@
       </form>
     </div>
 
-    <div v-if="selectedRow" class="detail-panel" data-testid="detail-panel">
-      <h3>关联信息：{{ selectedRow['表名称'] }}</h3>
-      <div class="detail-section">
-        <h4>来源入库批次</h4>
-        <table class="data-table small">
-          <thead><tr><th>批次编号</th><th>来源系统</th><th>文件格式</th><th>原始行数</th><th>入库时间</th></tr></thead>
-          <tbody>
-            <tr v-for="b in relatedBatches" :key="b['批次编号']"><td>{{ b['批次编号'] }}</td><td>{{ b['来源系统'] }}</td><td>{{ b['文件格式'] }}</td><td>{{ b['原始行数'] }}</td><td>{{ b['入库时间'] }}</td></tr>
-            <tr v-if="!relatedBatches.length"><td colspan="5" class="empty-state">无关联批次</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="detail-section">
-        <h4>模拟表数据预览（前5行）</h4>
-        <table class="data-table small">
-          <thead><tr><th v-for="col in tableDataColumns" :key="col">{{ col }}</th></tr></thead>
-          <tbody>
-            <tr v-for="(r, idx) in tableDataPreview" :key="idx"><td v-for="col in tableDataColumns" :key="col">{{ r[col] ?? '—' }}</td></tr>
-            <tr v-if="!tableDataPreview.length"><td :colspan="tableDataColumns.length || 1" class="empty-state">暂无数据</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { request } from '@/api/client'
 
@@ -107,9 +93,13 @@ type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/ods_layer'
 const columns = ["表编号", "来源系统", "表名称", "分区字段", "存储格式", "保留天数", "压缩算法", "创建批次"]
+// 列表额外展示ODS可见字段结构状态与越权字段数；登记表单仍只用基础字段
+const displayColumns = [...columns, "可见结构状态", "越权字段数"]
 const actions = ["提交校验", "确认上线", "标记下线"]
 const statuses = ["草稿", "待校验", "已上线", "已下线"]
 const metricNames = ["贴源表总数", "待校验表", "已上线表"]
+
+const router = useRouter()
 
 const rows = ref<Row[]>([])
 const total = ref(0)
@@ -169,6 +159,10 @@ async function submitCreate() {
   } finally {
     creating.value = false
   }
+}
+
+function openDetail(row: Row) {
+  void router.push(`/ods_layer/${row.id}`)
 }
 
 async function runAction(action: string, row: Row) {

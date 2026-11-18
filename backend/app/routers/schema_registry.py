@@ -8,11 +8,13 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.schemas import ActionPayload, ActionResult, EntryPayload, PageResult
+from app.services.ods_visible_schema import OdsVisibleSchemaService
 from app.services.schema_registry import SchemaRegistryService
 
 router = APIRouter(prefix="/api/schema_registry", tags=["结构注册"])
 
 service = SchemaRegistryService()
+visible_service = OdsVisibleSchemaService()
 
 LIST_FIELDS = ["定义编号", "表名称", "字段名称", "字段类型", "可空标识", "默认值", "定义版本", "生效批次"]
 STATUSES = ["草稿", "待校验", "已生效", "已废弃"]
@@ -76,7 +78,17 @@ def get_entry(entry_id: int) -> dict:
 
 @router.post("", response_model=ActionResult)
 def create_entry(payload: dict[str, object]) -> ActionResult:
-    """登记一条结构定义，缺字段时说明原因而不是静默丢弃。"""
+    """登记一条结构定义，缺字段时说明原因而不是静默丢弃。
+
+    跨模块校验：注册到贴源表的字段必须落在ODS可见字段结构内，
+    越权字段没被裁剪却已写入结构时拒绝登记。
+    """
+    violations = visible_service.validate_schema_fields(
+        str(payload.get("表名称", "") or ""), str(payload.get("字段名称", "") or ""))
+    if violations:
+        return ActionResult(
+            ok=False,
+            message=f"越权字段未裁剪，不能写入结构：{'、'.join(violations)}")
     entry, missing = service.create_entry(payload)
     if missing:
         return ActionResult(ok=False, message=f"缺少必填字段：{'、'.join(missing)}")
